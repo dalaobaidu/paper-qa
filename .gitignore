@@ -312,3 +312,15 @@ tests/example2.*
 
 # Client data
 src/paperqa/clients/client_data/retractions.csv
+
+# ===== pqa-local (local QA workspace) =====
+# Local data, generated indexes, and sensitive files are NOT committed
+pqa-local/.env
+pqa-local/papers/
+pqa-local/index/
+pqa-local/index_agent/
+pqa-local/_extract/
+pqa-local/__pycache__/
+pqa-local/_filelist.txt
+pqa-local/_indexed.txt
+pqa-local/corpus_scan.json
