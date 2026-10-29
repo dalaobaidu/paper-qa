@@ -93,12 +93,20 @@ def build_settings() -> Settings:
         # lmi's embedding_model_factory passes this dict straight through as
         # LiteLLMEmbeddingModel.config; its "kwargs" go to litellm.aembedding.
         embedding_config={
+            # Free-tier bge-m3 enforces a server-side TPM cap; throttle
+            # client-side (moving-window token bucket weighted by estimated
+            # tokens per batch) to stay under it. Lower the number if 429s
+            # still appear.
+            "rate_limit": "300000/minute",
             "kwargs": {
                 "api_base": "https://api.siliconflow.cn/v1",
                 "api_key": os.environ["SILICONFLOW_API_KEY"],
                 # DashScope rejects litellm's default encoding_format
                 "encoding_format": "float",
-            }
+                # Retry 429s with backoff so per-minute TPM windows are
+                # waited out instead of failing the whole file.
+                "num_retries": 8,
+            },
         },
         agent=AgentSettings(agent_llm=model, agent_llm_config=llm_config),
         parsing=ParsingSettings(

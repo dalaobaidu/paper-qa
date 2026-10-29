@@ -324,3 +324,16 @@ pqa-local/__pycache__/
 pqa-local/_filelist.txt
 pqa-local/_indexed.txt
 pqa-local/corpus_scan.json
+
+# ===== Local research files (contain corpus/literature content, NOT public) =====
+.trae/
+pqa-local/audit/
+pqa-local/corpus_scan_pdf.json
+pqa-local/草稿.txt
+pqa-local/task_router.py
+pqa-local/citation_fix.py
+pqa-local/paper_ledger.py
+pqa-local/answer_lint.py
+pqa-local/retrieval_audit.py
+pqa-local/evidence_coverage.py
+pqa-local/tests/

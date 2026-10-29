@@ -162,6 +162,13 @@ async def main() -> None:
         help="Abort after this many failures in a row (likely a config problem).",
     )
     parser.add_argument(
+        "--max-rate-retries",
+        type=int,
+        default=4,
+        help="Retry a file this many times when the embedding API rate-limits "
+        "(HTTP 429); waits ~65s between tries to clear the per-minute window.",
+    )
+    parser.add_argument(
         "--allow-low-entropy-text",
         action="store_true",
         help=(
@@ -259,12 +266,28 @@ async def main() -> None:
             before = len(docs.texts)
             t0 = time.perf_counter()
             try:
-                docname = await docs.aadd(
-                    path,
-                    settings=settings,
-                    citation=f"{path.stem} [{path.parent.name}]",
-                    docname=path.stem,
-                )
+                docname = None
+                for attempt in range(1, args.max_rate_retries + 1):
+                    try:
+                        docname = await docs.aadd(
+                            path,
+                            settings=settings,
+                            citation=f"{path.stem} [{path.parent.name}]",
+                            docname=path.stem,
+                        )
+                        break
+                    except Exception as e:  # noqa: BLE001
+                        rate_limited = (
+                            "RateLimit" in type(e).__name__ or "429" in str(e)
+                        )
+                        if not rate_limited or attempt == args.max_rate_retries:
+                            raise
+                        print(
+                            f"      rate limit (429), waiting 65s "
+                            f"(retry {attempt}/{args.max_rate_retries - 1})",
+                            flush=True,
+                        )
+                        await asyncio.sleep(65)
                 elapsed = time.perf_counter() - t0
                 added = len(docs.texts) - before
                 if docname is None:

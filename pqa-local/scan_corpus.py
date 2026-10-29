@@ -7,6 +7,7 @@ extractable text (likely scanned images), plus exact duplicate files.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
@@ -18,7 +19,7 @@ from pathlib import Path
 from pypdf import PdfReader
 
 BASE_DIR = Path(__file__).resolve().parent
-CORPUS = BASE_DIR.parent / "文件"
+DEFAULT_CORPUS = BASE_DIR.parent / "文件"
 CHUNK_CHARS = 5000
 OVERLAP = 250
 WORKERS = 4
@@ -41,12 +42,21 @@ def file_md5(path: Path) -> str:
     return h.hexdigest()
 
 
-def scan(path_str: str) -> dict:
+def display_path(path: Path, roots: tuple[str, ...]) -> str:
+    for root in roots:
+        try:
+            return str(path.relative_to(root))
+        except ValueError:
+            continue
+    return str(path)
+
+
+def scan(path_str: str, roots: tuple[str, ...]) -> dict:
     logging.getLogger("pypdf").setLevel(logging.CRITICAL)
     warnings.filterwarnings("ignore")
     path = Path(path_str)
     record: dict = {
-        "path": str(path.relative_to(CORPUS)),
+        "path": display_path(path, roots),
         "bytes": path.stat().st_size,
         "md5": file_md5(path),
     }
@@ -79,12 +89,39 @@ def main() -> None:
     logging.getLogger("pypdf").setLevel(logging.CRITICAL)
     warnings.filterwarnings("ignore")
 
-    pdfs = sorted(CORPUS.rglob("*.pdf"))
+    parser = argparse.ArgumentParser(
+        description="Read-only corpus scan (no API calls): pages, chars, "
+        "estimated chunks/embedding tokens, duplicates, low-text PDFs."
+    )
+    parser.add_argument(
+        "--corpus",
+        type=Path,
+        nargs="+",
+        default=[DEFAULT_CORPUS],
+        help="One or more directories containing PDFs (default: ../文件).",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=BASE_DIR / "corpus_scan.json",
+        help="Where to write the JSON report (default: ./corpus_scan.json).",
+    )
+    args = parser.parse_args()
+
+    roots = tuple(str(c.resolve()) for c in args.corpus)
+    missing = [r for r in roots if not Path(r).is_dir()]
+    if missing:
+        sys.exit(f"Corpus directory not found: {', '.join(missing)}")
+
+    pdfs = sorted(
+        {p for r in roots for p in Path(r).rglob("*.pdf")},
+        key=lambda p: str(p).lower(),
+    )
     if not pdfs:
-        sys.exit(f"No PDFs under {CORPUS}")
+        sys.exit(f"No PDFs under {', '.join(roots)}")
     records = []
     with ProcessPoolExecutor(max_workers=WORKERS) as pool:
-        futures = {pool.submit(scan, str(p)): p for p in pdfs}
+        futures = {pool.submit(scan, str(p), roots): p for p in pdfs}
         for i, fut in enumerate(as_completed(futures), 1):
             rec = fut.result()
             records.append(rec)
@@ -107,7 +144,7 @@ def main() -> None:
     low_text = [r for r in ok if r["chars_per_page"] < 200]
 
     summary = {
-        "corpus": str(CORPUS),
+        "corpus": list(roots),
         "pdf_count": len(pdfs),
         "parsed_ok": len(ok),
         "errors": len(records) - len(ok),
@@ -122,7 +159,7 @@ def main() -> None:
         ],
         "records": records,
     }
-    out = BASE_DIR / "corpus_scan.json"
+    out = args.out
     out.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("\n=== SUMMARY ===")
